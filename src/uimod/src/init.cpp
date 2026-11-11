@@ -35,6 +35,7 @@
 #include "pssphere.h"
 #include "musicfix.h"
 #include "riotfix.h"
+#include "terrainhd.h"
 #include "blinkfix.h"
 #include "cursorscale.h"
 #include "hudmovesfix.h"
@@ -392,6 +393,11 @@ extern "C" void __stdcall Init(HMODULE self)
     // Base-game bug: the selected unit's blink regenerated only its own tile, leaving a sliver of any sprite
     // wider than the tile drawn solid. Both exes. See blinkfix.cpp.
     InstallBlinkFix();
+
+    // Drop-in HD terrain textures: <game>\terrain\texture_x2.pcx / texture_x4.pcx replace the map's terrain at the
+    // main map's zoom. Nothing is patched without a pack on disk; [UIMod] TerrainHD=0 turns it off. Byte-checked
+    // E8 retargets plus the UV tables / immediates, cave-free, both exes. See terrainhd.cpp.
+    InstallTerrainHd();
 
     // The engine map cursors (go-to, patrol, airdrop, ...) at vanilla x g/16. Patched exe only. See cursorscale.cpp.
     InstallCursorScale();

@@ -123,6 +123,7 @@
     <ClCompile Include="src\viewdragfix.cpp" />
     <ClCompile Include="src\musicfix.cpp" />
     <ClCompile Include="src\riotfix.cpp" />
+    <ClCompile Include="src\terrainhd.cpp" />
     <ClCompile Include="src\rowindent.cpp" />
     <ClCompile Include="src\update.cpp" />
     <ClCompile Include="src\vidmode.cpp" />

@@ -116,7 +116,7 @@ A rule learned the hard way, with the failure that taught it.
 - [feedback-yaml-thunk-content-desync](feedback-yaml-thunk-content-desync.md): A cave thunk's CONTENT bytes are a separate patches.yaml entry from its symbol/group/site — committing only the latter makes a clean apply CALL into a zero-filled cave
 - [feedback-yaml-utf8-encoding](feedback-yaml-utf8-encoding.md): Don't edit patches.yaml (or any UTF-8 file) with a Python open()/write() round-trip on Windows — it corrupts non-ASCII and crashes apply
 
-## Screens and features (105)
+## Screens and features (106)
 
 What was done to one screen or feature, what was tried, and what state it was left in.
 
@@ -209,6 +209,7 @@ What was done to one screen or feature, what was tried, and what state it was le
 - [project-smac-social-engineering](project-smac-social-engineering.md): Social Engineering screen (SocialWin) scaling arc — CLOSED 2026-08-25 USER-VERIFIED all-res + COMMITTED — group se_scale v2b build 6f8267d6 (v2 rails d2393049, v1 155da371); lessons: ctor array bases, slide-rail census, exercise every control; KEY: missing icons v6-v15 were the PROBE (hazard #7); the five 'metrics' are ALIASES of sprite struct fields; frame thunks draw the bottom stroke ON row B
 - [project-smac-stale-scale-float-crash](project-smac-stale-scale-float-crash.md): ESC-quit AV root cause (VANILLA bug): blit-core stores scale float 0x9B6624 BEFORE the 4.0-limit check — a rejected >4x blit poisons it; next cached-ratio blit over-reads its source 2.2x. FIXED + USER-VERIFIED 2026-07-18 (76bb1956, scale_ratio_uncache, 8 reject sites -> cache_num=-1). Supersedes the bandmap-overrun theory (DISPROVEN)
 - [project-smac-supported-targets](project-smac-supported-targets.md): Public release targets are the PRACX exe and PRACX+Thinker ONLY (Thinker without PRACX is NOT a target, user 2026-10-28); vanilla terranx.exe is a dev tool, Scient's patch is not a target
+- [project-smac-terrain-hd](project-smac-terrain-hd.md): Drop-in HD terrain textures (issue #1) — the terrain Textures, the three UV sources (two .data tables + eight 0x37 immediates), the +10 load remap, all 56x56 textures move together; uimod terrainhd.cpp, verified in game at levels 1/2/4
 - [project-smac-tech-breakthrough](project-smac-tech-breakthrough.md): TECH BREAKTHROUGH window ("OUR RESEARCHERS HAVE MADE A BREAKTHROUGH") scaling arc — BAKED 2026-09-19 as ntw_scale; v1 user-shot + MEASURED on law at 4K/1600/1920/1024; v3 user-confirmed (wheel/buttons/captions) on 5e677e32; LIVE exe 5c095931 + uimod.dll 367eb124 (adds the vanilla text-box top-anchor fix in the DLL + the shared ornate band map) AWAITING verify; window = Thinker NetTechWin 0x811E40 (NOT multiplayer-only; was mislabelled 'NetWin CHAT page')
 - [project-smac-tech-select](project-smac-tech-select.md): SELECT RESEARCH GOAL (tech_pick) screen scaling arc — CLOSED 2026-08-28 USER-VERIFIED all-res + COMMITTED, group tech_scale build fa4d6a21; option (a) law, cell-calibrated fonts, devfill R-1/B-1; lessons in file
 - [project-smac-thinker-compat](project-smac-thinker-compat.md): Thinker compatibility pass — Thinker never modifies terranx.exe on disk (runtime in-memory patcher), so the "thinker" target has the VANILLA hash and collisions are FATAL (exit_fail), not skipped; release 5.5 staged at refs\thinker-release\v5.5, source clone at tag v5.5
