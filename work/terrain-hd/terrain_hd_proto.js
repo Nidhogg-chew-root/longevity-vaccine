@@ -126,6 +126,10 @@ function levelFor(zoom) {
     return have.find((k) => k >= need) || have[have.length - 1];
 }
 
+// Before any hook: the attaches below rewrite these entries, so a later check would only see our own trampolines.
+const stockError = (() => { try { checkStock(); return null; } catch (e) { return String(e); } })();
+if (stockError) throw new Error(stockError + " -- nothing attached");
+
 Interceptor.attach(at(VA.genTerrainPoly), {
     onEnter(args) {
         this.main = args[1].equals(at(VA.mainConsole));
@@ -181,7 +185,7 @@ function onBlocks(msg, data) {
 recv("blocks", onBlocks);
 
 rpc.exports = {
-    check() { checkStock(); return "ok"; },
+    check() { return "ok"; },               // checked at load, before the hooks went in
     scan() {
         const out = [];
         const n = VA.dataHi - VA.dataLo;

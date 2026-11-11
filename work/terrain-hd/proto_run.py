@@ -27,6 +27,16 @@ import pcx8  # noqa: E402
 from make_test_sheets import scale2x  # noqa: E402
 
 
+# load_terrain loads TEXTURE.PCX with Buffer_load_pcx(name, 0, 10, 236): the file's 236 colours land at palette
+# 10..245 (loaded index = raw + 10) and 255 becomes 9, the engine's transparency key (probed in a running game,
+# 2026-11-11). 236..254 were never seen inside a tile; they map to 0, which no loaded texture holds, so nothing
+# matches through them and HD pixels that would carry one are refilled (build_blocks).
+LOAD_LUT = np.zeros(256, dtype=np.uint8)
+LOAD_LUT[:236] = np.arange(236) + 10
+LOAD_LUT[255] = 9
+UNMAPPED = 0
+
+
 def match_rects(textures, sheet: np.ndarray):
     """Source rect of each 56x56 texture in the stock sheet, or None. Returns (rects, report)."""
     rows = [sheet[y].tobytes() for y in range(sheet.shape[0])]
@@ -51,16 +61,20 @@ def match_rects(textures, sheet: np.ndarray):
 
 
 def build_blocks(textures, rects, hd: np.ndarray, k: int) -> bytes:
+    """`hd` is already in loaded indices (LOAD_LUT applied)."""
     side = 56 * k
     out = bytearray()
     for t, r in zip(textures, rects):
+        own = np.frombuffer(bytes.fromhex(t["hex"]), dtype=np.uint8).reshape(56, 56)
+        while own.shape[0] < side:
+            own = scale2x(own)
         if r is not None:
             x, y = r
-            block = hd[y * k:y * k + side, x * k:x * k + side]
+            block = hd[y * k:y * k + side, x * k:x * k + side].copy()
+            hole = block == UNMAPPED                 # a colour the loader never gave a tile
+            block[hole] = own[hole]
         else:
-            block = np.frombuffer(bytes.fromhex(t["hex"]), dtype=np.uint8).reshape(56, 56)
-            while block.shape[0] < side:
-                block = scale2x(block)
+            block = own
         assert block.shape == (side, side)
         out += np.ascontiguousarray(block).tobytes()
     return bytes(out)
@@ -70,14 +84,15 @@ def main():
     game, out = Path(sys.argv[1]), Path(sys.argv[2])
     steps = sys.argv[3:]
     out.mkdir(parents=True, exist_ok=True)
-    sheet, stock_pal, _ = pcx8.read(game / "texture.pcx")
+    raw_sheet, stock_pal, _ = pcx8.read(game / "texture.pcx")
+    sheet = LOAD_LUT[raw_sheet]
     hd_sheets = {}
     for p in sorted((game / "terrain_hd").glob("texture_x*.pcx")):
         k = int(p.stem.split("_x")[1])
         px, pal, _ = pcx8.read(p)
         if px.shape != (sheet.shape[0] * k, sheet.shape[1] * k) or pal != stock_pal:
             sys.exit(f"{p}: must be exactly {k}x the stock sheet with the stock palette")
-        hd_sheets[k] = px
+        hd_sheets[k] = LOAD_LUT[px]
 
     session = frida.attach("terranx.exe")
     script = session.create_script((HERE / "terrain_hd_proto.js").read_text(encoding="utf-8"))
