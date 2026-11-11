@@ -10,7 +10,7 @@ Longevity Vaccine is a free mod for *Sid Meier's Alpha Centauri: Alien Crossfire
 - **Movies play inside the game.** Optional HD remastered cinematics.
 - **Optional HD leader portraits** by Turovetsky ([YouTube](https://www.youtube.com/@Turovetsky), [X](https://x.com/turovetsky)), or drop in your own portrait images.
 - **Smooth map scrolling** at high resolutions.
-- **Drop-in HD terrain:** put `texture_x2.pcx` and/or `texture_x4.pcx` (the game's `texture.pcx` redrawn at 2x / 4x, same palette) in a `terrain` folder in the game folder, and the map uses them as you zoom in.
+- **Drop-in HD terrain:** put the game's `texture.pcx` redrawn at 8x (same layout and palette) in a `terrain` folder in the game folder as `texture_x8.pcx`, and the map uses it as you zoom in. `texture_x2.pcx` / `texture_x4.pcx` hand-made for those sizes are used instead when present.
 - **Fixes gameplay bugs.** The AI can no longer see cloaked units, etc.
 - **Modern-style mouse controls** (optional)
 - **Self-updater** (optional)

@@ -3,6 +3,7 @@
 //   terrainhd_selftest level <zoom> <mask>   -> LevelFor(zoom, mask)
 //   terrainhd_selftest sheet <w> <h> <k>     -> 1/0 SheetSizeOk
 //   terrainhd_selftest scale2x <n> <hex>     -> hex of the 2n x 2n result
+//   terrainhd_selftest down <w> <h> <f> <hex> -> hex of the (w/f) x (h/f) DownscaleMode result
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -35,6 +36,19 @@ int main(int argc, char** argv)
             src[i] = static_cast<uint8_t>(std::strtoul(b, nullptr, 16));
         }
         terrainhd::Scale2x(src.data(), n, dst.data());
+        for (uint8_t v : dst) std::printf("%02x", v);
+        return 0;
+    }
+    if (std::strcmp(mode, "down") == 0 && argc == 6) {
+        const int w = std::atoi(argv[2]), h = std::atoi(argv[3]), f = std::atoi(argv[4]);
+        const char* hex = argv[5];
+        if (static_cast<int>(std::strlen(hex)) != 2 * w * h) return 4;
+        std::vector<uint8_t> src(w * h), dst((w / f) * (h / f));
+        for (int i = 0; i < w * h; ++i) {
+            char b[3] = { hex[2 * i], hex[2 * i + 1], 0 };
+            src[i] = static_cast<uint8_t>(std::strtoul(b, nullptr, 16));
+        }
+        terrainhd::DownscaleMode(src.data(), w, h, w, f, dst.data(), w / f);
         for (uint8_t v : dst) std::printf("%02x", v);
         return 0;
     }

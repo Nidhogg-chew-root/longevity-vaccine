@@ -9,7 +9,9 @@ namespace terrainhd {
 // The stock terrain texture is 56x56 texels; a level-k sheet carries every tile at 56k x 56k.
 constexpr int kTile = 56;
 constexpr int kStockSheetW = 1024, kStockSheetH = 768;   // TEXTURE.PCX
-constexpr int kLevels[] = { 2, 4 };                       // offered HD levels; 1 = stock
+// Offered HD levels; 1 = stock. 8 is mostly a MASTER: by LevelFor it is drawn only past zoom 74 (PRACX stops at
+// 72 at 4K), and the 4x / 2x levels are derived from it (DownscaleMode) when their own files are absent.
+constexpr int kLevels[] = { 2, 4, 8 };
 
 // The engine's terrain UVs are in stock texel units, 0..55 (two .data tables + eight `mov r32, 0x37`).
 // Level k spans the same polygon over 0..56k-1: u' = round(u * (56k - 1) / 55). 0 -> 0, 55 -> 56k-1, monotonic.
@@ -41,6 +43,33 @@ inline int LevelFor(int zoom, unsigned have)
 inline bool SheetSizeOk(int w, int h, int k)
 {
     return w == kStockSheetW * k && (h == kStockSheetH * k || h == -kStockSheetH * k);   // Buffer h is stored negative
+}
+
+// Shrink an index image by an integer factor f, each f x f block -> its most frequent index; a tie goes to the index
+// met first in the block (row-major). Never blends, so the result keeps the source's palette indices and its crisp
+// edges -- the shading bands survive, and an artist's palette stays exactly the palette they painted with.
+// dst is (w/f) x (h/f) with row stride dpitch; src is w x h with row stride spitch.
+inline void DownscaleMode(const uint8_t* src, int w, int h, int spitch, int f, uint8_t* dst, int dpitch)
+{
+    unsigned short count[256] = {};
+    uint8_t seen[64];                                    // f <= 8
+    for (int by = 0; by < h / f; ++by) {
+        for (int bx = 0; bx < w / f; ++bx) {
+            int nseen = 0, best = -1, bestCount = 0;
+            for (int y = 0; y < f; ++y) {
+                const uint8_t* row = src + (by * f + y) * spitch + bx * f;
+                for (int x = 0; x < f; ++x) {
+                    const uint8_t v = row[x];
+                    if (count[v]++ == 0) seen[nseen++] = v;
+                }
+            }
+            for (int i = 0; i < nseen; ++i) {            // first-met order breaks ties
+                if (count[seen[i]] > bestCount) { bestCount = count[seen[i]]; best = seen[i]; }
+            }
+            for (int i = 0; i < nseen; ++i) count[seen[i]] = 0;
+            dst[by * dpitch + bx] = static_cast<uint8_t>(best);
+        }
+    }
 }
 
 // Scale2x (EPX) of an n x n index image into 2n x 2n. Copies only neighbouring palette INDICES -- never blends --

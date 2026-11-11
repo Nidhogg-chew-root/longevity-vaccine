@@ -1,10 +1,12 @@
 // terrainhd.cpp -- drop-in HD terrain textures (GitHub issue #1: "the ability to drop-in their own custom terrain
 // packs", like the custom portrait files).
 //
-// A pack is <game>\terrain\texture_x<k>.pcx for k = 2 and/or 4: TEXTURE.PCX redrawn at k x (2048x1536 / 4096x3072),
-// 8-bit, painted in the STOCK file's palette indices. The rasterizer shades by adding an offset to the index
-// (Texture_draw_2 0x61B1F0: `add al, ch`), so a pack in another palette layout shades into the wrong colours.
-// 4x is the useful maximum: at PRACX's deepest zoom (72, 4K) a tile needs (72+16)/(16*sqrt2) = 3.9 x the texels.
+// A pack is <game>\terrain\texture_x<k>.pcx for k = 2, 4 and/or 8: TEXTURE.PCX redrawn at k x (2048x1536 / 4096x3072
+// / 8192x6144), 8-bit, painted in the STOCK file's palette indices. The rasterizer shades by adding an offset to the
+// index (Texture_draw_2 0x61B1F0: `add al, ch`), so a pack in another palette layout shades into the wrong colours.
+// 4x is the useful maximum to DRAW: at PRACX's deepest zoom (72, 4K) a tile needs (72+16)/(16*sqrt2) = 3.9 x the
+// texels. 8x is the artist's master size (issue #1: 448-pixel cells on a 456 grid); a level with no file of its own
+// is cut down from texture_x8.pcx on first use, each block to its most frequent index (terrainhd::DownscaleMode).
 //
 // Engine (PRACX 2d0b1438 and the vanilla exe alike; prototype + in-game run in work\terrain-hd on the
 // terrain-hd-proto branch):
@@ -53,6 +55,7 @@ namespace {
 constexpr uintptr_t kVA_Extract2       = 0x619710;   // thiscall (Texture*, Buffer* src, x, y, w, h, TexHeap*) RET 0x18
 constexpr uintptr_t kVA_GenTerrainPoly = 0x4632D0;   // cdecl (Buffer*, MapWindow*, zoom, faction, 6 more)
 constexpr uintptr_t kVA_BufferCtor     = 0x5D7210;   // thiscall (Buffer*)
+constexpr uintptr_t kVA_BufferDtor     = 0x5D7410;   // thiscall (Buffer*): frees the pixels (load_terrain's own pairing)
 constexpr uintptr_t kVA_BufferResize   = 0x5D7670;   // thiscall (Buffer*, w, h, 0, 0) RET 0x10 -- as load_terrain sizes its own
 constexpr uintptr_t kVA_LoadPcx        = 0x5D7DE0;   // thiscall (Buffer*, name, pal, a4, a5) RET 0x10; RESIZES self
 constexpr uintptr_t kVA_LoadingCanvas  = 0x798668;   // the Buffer TEXTURE.PCX is loaded into
@@ -84,6 +87,7 @@ struct Entry {
 typedef int (__thiscall* FExtract2)(Texture*, void*, int, int, int, int, void*);
 typedef int (__cdecl* FGen)(void*, void*, int, int, int, int, int, int, int, int);
 typedef void (__thiscall* FBufferCtor)(void*);
+typedef void (__thiscall* FBufferDtor)(void*);
 typedef int (__thiscall* FBufferResize)(void*, int, int, int, int);
 typedef int (__thiscall* FLoadPcx)(void*, const char*, void*, int, int);
 
@@ -91,10 +95,11 @@ FExtract2 g_extract = nullptr;
 FGen g_gen = nullptr;
 std::vector<Entry> g_entries;
 int g_level = 1;                                       // installed level; 1 = stock
-unsigned g_have = 0;                                   // bit k: texture_x<k>.pcx is on disk with the right size
-unsigned g_loaded = 0;                                 // bit k: that sheet is loaded into g_sheet[k]
+unsigned g_files = 0;                                  // bit k: texture_x<k>.pcx is on disk with the right size
+unsigned g_have = 0;                                   // bit k: level k can be drawn (its file, or derived from x8)
+unsigned g_loaded = 0;                                 // bit k: that sheet is in g_sheet[k]
 bool g_dead = false;                                   // a failed install: stock for the rest of the session
-alignas(16) uint8_t g_sheet[5][kBufSize + 0x80];       // index 2 and 4: the HD sheets; 1: the stock sheet (adoption)
+alignas(16) uint8_t g_sheet[9][kBufSize + 0x80];       // 2, 4, 8: the HD sheets; 1: the stock sheet (adoption)
 alignas(16) uint8_t g_scratch[kBufSize + 0x80];
 bool g_scratchReady = false;
 int32_t g_uvStock[2][56];
@@ -198,21 +203,65 @@ bool PcxSize(const char* path, int* w, int* h)
     return true;
 }
 
-bool LoadSheet(int k)
+bool LoadFile(int k)
 {
     if (g_loaded & (1u << k)) return true;
     char path[MAX_PATH];
     if (!SheetPath(k, path, sizeof path)) return false;
+    const DWORD t0 = GetTickCount();
     reinterpret_cast<FBufferCtor>(At(kVA_BufferCtor))(g_sheet[k]);
     reinterpret_cast<FLoadPcx>(At(kVA_LoadPcx))(g_sheet[k], path, nullptr, 10, 0xEC);   // load_terrain's own arguments
     if (!terrainhd::SheetSizeOk(Field(g_sheet[k], kBufW), Field(g_sheet[k], kBufH), k) || !Pixels(g_sheet[k])) {
         Log("[terrainhd] texture_x%d.pcx did not load as %dx%d -> level %d off\n", k,
             terrainhd::kStockSheetW * k, terrainhd::kStockSheetH * k, k);
-        g_have &= ~(1u << k);
+        g_files &= ~(1u << k);
         return false;
     }
     g_loaded |= 1u << k;
+    Log("[terrainhd] loaded texture_x%d.pcx in %lu ms\n", k, GetTickCount() - t0);
     return true;
+}
+
+// Every level that has no file of its own, cut down from the 8x master (an artist's working size: texture.pcx's
+// 57-pixel grid at 8x), then the master is let go -- it is only drawn past PRACX's deepest zoom, and reloaded if so.
+bool DeriveFromMaster()
+{
+    if (!LoadFile(8)) return false;
+    const DWORD t0 = GetTickCount();
+    const uint8_t* src = Pixels(g_sheet[8]);
+    const int spitch = Field(g_sheet[8], kBufPitch);
+    for (int k : { 2, 4 }) {
+        if ((g_files & (1u << k)) || (g_loaded & (1u << k))) continue;
+        const int w = terrainhd::kStockSheetW * k, h = terrainhd::kStockSheetH * k;
+        reinterpret_cast<FBufferCtor>(At(kVA_BufferCtor))(g_sheet[k]);
+        reinterpret_cast<FBufferResize>(At(kVA_BufferResize))(g_sheet[k], w, h, 0, 0);
+        uint8_t* dst = Pixels(g_sheet[k]);
+        if (!dst || !terrainhd::SheetSizeOk(Field(g_sheet[k], kBufW), Field(g_sheet[k], kBufH), k)) {
+            Log("[terrainhd] could not size a %dx%d buffer for the %dx level -> level %d off\n", w, h, k, k);
+            g_have &= ~(1u << k);
+            continue;
+        }
+        terrainhd::DownscaleMode(src, terrainhd::kStockSheetW * 8, terrainhd::kStockSheetH * 8, spitch, 8 / k,
+                                 dst, Field(g_sheet[k], kBufPitch));
+        g_loaded |= 1u << k;
+    }
+    Log("[terrainhd] derived the%s%s levels from texture_x8.pcx in %lu ms\n", (g_loaded & 4) ? " 2x" : "",
+        (g_loaded & 16) ? " 4x" : "", GetTickCount() - t0);
+    reinterpret_cast<FBufferDtor>(At(kVA_BufferDtor))(g_sheet[8]);
+    g_loaded &= ~(1u << 8);
+    return true;
+}
+
+bool LoadSheet(int k)
+{
+    if (g_loaded & (1u << k)) return true;
+    if (g_files & (1u << k)) {
+        if (LoadFile(k)) return true;
+        if (k == 8 || !(g_files & (1u << 8))) { g_have &= ~(1u << k); return false; }
+    }
+    if (k != 8 && DeriveFromMaster() && (g_loaded & (1u << k))) return true;
+    g_have &= ~(1u << k);
+    return false;
 }
 
 // --- levels -----------------------------------------------------------------------------------------------------
@@ -388,12 +437,14 @@ void InstallTerrainHd()
         int w = 0, h = 0;
         if (!SheetPath(k, path, sizeof path) || GetFileAttributesA(path) == INVALID_FILE_ATTRIBUTES) continue;
         if (PcxSize(path, &w, &h) && terrainhd::SheetSizeOk(w, h, k)) {
-            g_have |= 1u << k;
+            g_files |= 1u << k;
         } else {
             Log("[terrainhd] terrain\\texture_x%d.pcx is %dx%d, not an 8-bit %dx%d PCX -> ignored\n", k, w, h,
                 terrainhd::kStockSheetW * k, terrainhd::kStockSheetH * k);
         }
     }
+    g_have = g_files;
+    if (g_files & (1u << 8)) g_have |= (1u << 2) | (1u << 4);   // derived from the 8x master when needed
     if (!g_have) return;                      // no pack: nothing patched
 
     for (uint32_t s : kExtractSites) if (!CallsTo(s, kVA_Extract2)) {
@@ -426,6 +477,7 @@ void InstallTerrainHd()
     g_entries.reserve(192);
     for (uint32_t s : kExtractSites) Retarget(s, reinterpret_cast<const void*>(&ExtractRecorder));
     for (uint32_t s : kGenSites) Retarget(s, reinterpret_cast<const void*>(&GenTerrainPolyHook));
-    Log("[terrainhd] installed: levels%s%s from terrain\\ (21 extract + 8 terrain-pass sites)\n",
-        (g_have & 4) ? " 2x" : "", (g_have & 16) ? " 4x" : "");
+    Log("[terrainhd] installed: levels%s%s%s from terrain\\%s (21 extract + 8 terrain-pass sites)\n",
+        (g_have & 4) ? " 2x" : "", (g_have & 16) ? " 4x" : "", (g_have & 256) ? " 8x" : "",
+        (g_files & 256) && (g_files & 20) != 20 ? ", missing levels derived from texture_x8.pcx" : "");
 }

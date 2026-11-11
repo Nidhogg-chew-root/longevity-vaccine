@@ -53,7 +53,7 @@ def level_ref(zoom, have):
     if zoom + 16 <= 0:
         return 1
     need = (zoom + 16) / (16 * math.sqrt(2))
-    loaded = [k for k in (2, 4) if have & (1 << k)]
+    loaded = [k for k in (2, 4, 8) if have & (1 << k)]
     for k in [1] + loaded:
         if k >= need:
             return k
@@ -61,7 +61,7 @@ def level_ref(zoom, have):
 
 
 @needs_cpp
-@pytest.mark.parametrize("have", [0, 1 << 2, 1 << 4, (1 << 2) | (1 << 4)])
+@pytest.mark.parametrize("have", [0, 1 << 2, 1 << 4, (1 << 2) | (1 << 4), (1 << 2) | (1 << 4) | (1 << 8), 1 << 8])
 def test_level_for_zoom_matches_the_sqrt2_law(exe, have):
     for zoom in range(-16, 80, 3):
         assert int(run(exe, "level", zoom, have)) == level_ref(zoom, have), (zoom, have)
@@ -75,6 +75,46 @@ def test_level_landmarks(exe):
     assert int(run(exe, "level", 72, both)) == 4       # PRACX's deepest zoom at 4K needs 3.9x
     assert int(run(exe, "level", 72, 1 << 2)) == 2     # only 2x on disk: the best there is
     assert int(run(exe, "level", 72, 0)) == 1          # no pack: stock
+    every = both | (1 << 8)
+    assert int(run(exe, "level", 72, every)) == 4      # an 8x master is not drawn at PRACX's deepest zoom...
+    assert int(run(exe, "level", 80, every)) == 8      # ...only past zoom 74
+
+
+# ------------------------------------------------------------------------------------------------- 8x master
+
+def downscale_ref(src: np.ndarray, f: int) -> np.ndarray:
+    """Each f x f block -> its most frequent index; a tie goes to the index met first in the block (row-major)."""
+    h, w = src.shape
+    out = np.empty((h // f, w // f), dtype=np.uint8)
+    for by in range(h // f):
+        for bx in range(w // f):
+            block = src[by * f:(by + 1) * f, bx * f:(bx + 1) * f].ravel().tolist()
+            counts = {}
+            for v in block:
+                counts[v] = counts.get(v, 0) + 1
+            out[by, bx] = max(dict.fromkeys(block), key=lambda v: counts[v])   # max keeps the first of equals
+    return out
+
+
+@needs_cpp
+@pytest.mark.parametrize("f", [2, 4])
+@pytest.mark.parametrize("seed", [1, 2])
+def test_downscale_is_block_mode_first_met_wins(exe, f, seed):
+    rng = random.Random(seed)
+    src = np.array([[rng.choice([10, 11, 47, 61, 9]) for _ in range(48)] for _ in range(32)], dtype=np.uint8)
+    got = np.frombuffer(bytes.fromhex(run(exe, "down", 48, 32, f, src.tobytes().hex())), dtype=np.uint8)
+    assert (got.reshape(32 // f, 48 // f) == downscale_ref(src, f)).all()
+    assert set(np.unique(got)) <= set(np.unique(src)), "a downscale must never invent an index"
+
+
+@needs_cpp
+def test_downscale_undoes_a_nearest_upscale(exe):
+    """An 8x master that is just the stock art blown up comes back to exactly the stock art."""
+    rng = random.Random(7)
+    small = np.array([[rng.randrange(10, 83) for _ in range(12)] for _ in range(6)], dtype=np.uint8)
+    big = np.kron(small, np.ones((4, 4), dtype=np.uint8))
+    got = np.frombuffer(bytes.fromhex(run(exe, "down", 48, 24, 4, big.tobytes().hex())), dtype=np.uint8)
+    assert (got.reshape(6, 12) == small).all()
 
 
 # ------------------------------------------------------------------------------------------------- sheets
