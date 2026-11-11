@@ -4,8 +4,10 @@ description: Drop-in HD terrain textures (issue #1) — how the engine cuts and 
 metadata:
   type: project
 ---
-**What:** `<game>\terrain\texture_x2.pcx` / `texture_x4.pcx` (TEXTURE.PCX at 2x / 4x, stock palette indices) replace
-the map's terrain textures at the main map's zoom. Module: `src/uimod/src/terrainhd.cpp`, laws in `terrainhd_law.h`
+**What:** `<game>\terrain\texture_x8.pcx` (TEXTURE.PCX at 8x, stock palette indices — the artist's working size in
+issue #1) replaces the map's terrain textures at the main map's zoom; the 4x and 2x levels are cut down from it on
+first use (block mode, ties to the first met: palette and crisp edges kept), unless hand-made `texture_x4.pcx` /
+`texture_x2.pcx` are present. In game: 31 ms to load the 8x, 140 ms to derive both levels, then the 8x is freed. Module: `src/uimod/src/terrainhd.cpp`, laws in `terrainhd_law.h`
 (tests: `work/tests/test_terrainhd.py`). Contributed on a fork for issue #1; a Frida prototype of the same lever is
 on the `terrain-hd-proto` branch (`work/terrain-hd/`).
 
