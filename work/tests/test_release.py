@@ -235,6 +235,22 @@ def test_root_launcher_is_present_crlf_and_guards_itself(built):
     assert "INSTALLATION FAILED" in text
 
 
+def test_the_linux_and_macos_launcher_ships_executable_and_lf(built):
+    """INSTALL.sh is the Wine entry point: at the archive root beside INSTALL.bat, LF (bash reads a CRLF line's
+    \\r as part of the command), and executable once extracted -- unzip and macOS Archive Utility take the mode
+    from a Unix-made entry only."""
+    z = zipfile.ZipFile(built / rel.archive_name("base", ver.VERSION))
+    info = z.getinfo("INSTALL.sh")
+    data = z.read(info)
+    assert data.startswith(b"#!/usr/bin/env bash\n") and b"\r" not in data
+    assert info.create_system == 3 and (info.external_attr >> 16) == 0o100755
+    assert "call" in data.decode("utf-8") and "INSTALL.bat" in data.decode("utf-8")
+    others = [i for i in z.infolist() if i.filename != "INSTALL.sh"]
+    assert all(i.external_attr >> 16 == 0o644 and i.create_system == 0 for i in others)
+    attrs = [a.strip() for a in (_REPO / ".gitattributes").read_text(encoding="utf-8").split("\n")]
+    assert "*.sh text eol=lf" in attrs
+
+
 def test_no_pycache_or_dev_tooling_in_the_archive(built):
     names = zipfile.ZipFile(built / rel.archive_name("base", ver.VERSION)).namelist()
     assert not [n for n in names if "__pycache__" in n]

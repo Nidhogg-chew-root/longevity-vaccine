@@ -32,6 +32,16 @@ Other mods and the base game without Alien Crossfire are not supported.
 
 **To uninstall**, run `INSTALL.bat --uninstall` from a command prompt.
 
+### Linux and macOS (Wine)
+
+The game runs in Wine (plain Wine, Lutris, Heroic, Bottles, Steam's Proton, or CrossOver on a Mac), and so does the installer:
+
+1. Extract the whole zip.
+2. In a terminal, run `./INSTALL.sh` from the extracted folder. It finds the game in your Wine prefixes and runs `INSTALL.bat` with that prefix's Wine.
+3. Play with `thinker.exe` (or `terranx_PRACX.exe` without Thinker): set it as the game's executable in Lutris, Heroic or Bottles, or start it from your CrossOver bottle.
+
+If it finds more than one install, or none, say which: `./INSTALL.sh --game-dir "/path/to/Sid Meier's Alpha Centauri Planetary Pack"`. Add `--prefix /path/to/prefix` when the game is outside its prefix (Heroic and Lutris can install it that way), and `--wine /path/to/wine` when the prefix uses a Wine that is not on your `PATH` (Proton: `.../Proton x.y/files/bin/wine`). `--desktop-entry` adds a menu entry that starts the game with Thinker. Anything after `--` goes to the installer: `./INSTALL.sh -- --uninstall` uninstalls.
+
 ## Report a bug
 
 [Open an issue](../../issues). Say what you were doing, your resolution, and whether you use Thinker. Attach `uimod.log` from the game folder. For install or update problems, also attach the `LongevityMods\logs` folder.

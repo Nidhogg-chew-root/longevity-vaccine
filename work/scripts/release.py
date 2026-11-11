@@ -75,6 +75,8 @@ MODULE_SPEC = {
         "required": True,
         "files": [
             ("work/run-install.bat", "scripts/run-install.bat"),
+            # Linux / macOS entry point: finds the Wine prefix and runs INSTALL.bat under it. Executable, LF.
+            ("work/install.sh", "INSTALL.sh"),
             # The installer's own runtime. Everything install.py imports at run time has to be
             # here: shipping install.py without ed25519_verify/manifest would leave an installed
             # copy unable to check a signature, i.e. unable to update at all.
@@ -399,10 +401,14 @@ def collect(module: str, include_python: bool) -> list[tuple[Path, str]]:
     return out
 
 
+#: Archive entries that must extract executable on Linux / macOS (fixed bits, so the zip stays reproducible).
+EXECUTABLE_ENTRIES = {"INSTALL.sh"}
+
+
 def write_zip(entries: list[tuple[Path, str]], dest: Path) -> None:
     """Write a byte-for-byte reproducible zip.
 
-    Sorted entries + a fixed timestamp + no external attrs: the same inputs must always hash the
+    Sorted entries + a fixed timestamp + fixed external attrs: the same inputs must always hash the
     same, or every rebuild looks like a new release.
     """
     dest.parent.mkdir(parents=True, exist_ok=True)
@@ -417,6 +423,10 @@ def write_zip(entries: list[tuple[Path, str]], dest: Path) -> None:
             info.compress_type = zipfile.ZIP_DEFLATED
             info.external_attr = 0o644 << 16
             info.create_system = 0
+            if arc in EXECUTABLE_ENTRIES:
+                # unzip and macOS Archive Utility apply the mode bits only from a Unix-made entry
+                info.external_attr = 0o100755 << 16
+                info.create_system = 3
             if src is None:
                 z.writestr(info, _ROOT_LAUNCHER.encode("ascii"))
             else:

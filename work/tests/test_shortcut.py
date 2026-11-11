@@ -191,6 +191,31 @@ def test_a_foreign_shortcut_with_our_name_is_replaced_only_on_yes(desk, game, mo
     assert inst.find_shortcut_to(game / "terranx_PRACX.exe") == inst.MOD_SHORTCUT_NAME
 
 
+def test_windows_is_not_mistaken_for_wine(monkeypatch):
+    monkeypatch.delenv("LONGEVITY_ASSUME_WINE", raising=False)
+    assert inst.running_under_wine() is (hasattr(__import__("ctypes").windll.ntdll, "wine_get_version"))
+    monkeypatch.setenv("LONGEVITY_ASSUME_WINE", "1")
+    assert inst.running_under_wine() is True
+    monkeypatch.setenv("LONGEVITY_ASSUME_WINE", "0")
+    assert inst.running_under_wine() is False
+
+
+def test_under_wine_no_shortcut_is_offered_or_written(desk, game, monkeypatch, capsys):
+    """Wine has no PowerShell to write the .lnk with, and a Linux / Mac player starts the game from Lutris,
+    Heroic, Bottles or CrossOver: say so instead of asking, and leave the prefix's desktop alone."""
+    monkeypatch.setenv("LONGEVITY_ASSUME_WINE", "1")
+    (game / "thinker.exe").write_bytes(b"MZ")
+    monkeypatch.setattr(ix, "can_ask", lambda: True)
+    monkeypatch.setattr("builtins.input", lambda prompt="": pytest.fail("must not ask under Wine"))
+    inst.check_desktop_shortcut(game, "pracx_thinker")
+    out = capsys.readouterr().out
+    assert "Running under Wine: no Windows desktop shortcut. Start thinker.exe from your game launcher" in out
+    assert "INSTALL.sh --desktop-entry" in out
+    assert not list(desk[0].glob("*.lnk")) and not list(desk[1].glob("*.lnk"))
+    inst.print_play_note(game, "pracx_thinker")
+    assert "Your desktop shortcut" not in capsys.readouterr().out
+
+
 def test_the_note_for_a_non_pracx_target_stays_generic(desk, game, capsys):
     inst.print_play_note(game, "vanilla")
     out = capsys.readouterr().out

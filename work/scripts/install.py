@@ -2803,6 +2803,18 @@ def _desktop_dirs() -> list:
     return out
 
 
+def running_under_wine() -> bool:
+    """True inside Wine (Linux / macOS: plain Wine, Lutris, Heroic, Bottles, Proton, CrossOver): its ntdll
+    exports wine_get_version, Windows' never does. LONGEVITY_ASSUME_WINE=1|0 overrides, for tests."""
+    forced = os.environ.get("LONGEVITY_ASSUME_WINE")
+    if forced in ("0", "1"):
+        return forced == "1"
+    try:
+        return hasattr(ctypes.windll.ntdll, "wine_get_version")
+    except (AttributeError, OSError):
+        return False
+
+
 def _ps(script: str) -> str:
     """Run a PowerShell snippet hidden; its stdout, or "" on any failure."""
     try:
@@ -2898,6 +2910,13 @@ def check_desktop_shortcut(game_dir: Path, target_id, ask: bool = True) -> None:
     try:
         exe = mod_exe(game_dir, target_id)
         if exe is None:
+            return
+        if running_under_wine():
+            # The .lnk is written through PowerShell, which Wine does not have, and a Windows desktop inside a
+            # prefix is not where a Linux or Mac player starts games. INSTALL.sh --desktop-entry makes a menu entry.
+            ix.say("")
+            ix.say(f"Running under Wine: no Windows desktop shortcut. Start {exe.name} from your game launcher "
+                   "(Lutris, Heroic, Bottles, CrossOver), or run INSTALL.sh --desktop-entry for a menu entry.")
             return
         found = find_shortcut_to(exe)
         if found:

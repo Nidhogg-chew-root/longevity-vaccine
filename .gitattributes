@@ -3,6 +3,8 @@
 * -text
 # Except the batch launchers, which cmd.exe wants with CRLF: stored LF, checked out CRLF.
 *.bat text eol=crlf
+# And the shell launcher, which bash wants with LF on every checkout (CRLF fails with "$'\r': command not found").
+*.sh text eol=lf
 # And the player's changelog, which ships as CHANGELOG.txt: CRLF, so Notepad before Windows 10 1809 (Windows 7 is
 # supported) shows lines, not one run-on line. Stored LF like the batch files, so the manifest hash is unchanged.
 work/CHANGELOG.md text eol=crlf
